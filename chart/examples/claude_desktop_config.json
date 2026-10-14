@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "Cisco Modeling Labs CML": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://cml-mcp.example.com/mcp",
+        "--header",
+        "X-Authorization:${CML_AUTH_HEADER}",
+        "--header",
+        "X-PyATS-Authorization:${PYATS_AUTH_HEADER}",
+        "--header",
+        "X-PyATS-Enable:${PYATS_ENABLE_HEADER}"
+      ],
+      "env": {
+        "CML_AUTH_HEADER": "Basic <base64 of cml_user:cml_pass>",
+        "PYATS_AUTH_HEADER": "Basic <base64 of device_user:device_pass>",
+        "PYATS_ENABLE_HEADER": "Basic <base64 of enable_password>"
+      }
+    }
+  }
+}

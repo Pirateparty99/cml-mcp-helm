@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cml-mcp.fullname" . }}
+  labels:
+    {{- include "cml-mcp.labels" . | nindent 4 }}
+data:
+  CML_MCP_TRANSPORT: "http"
+  CML_MCP_BIND: "0.0.0.0"
+  CML_MCP_PORT: {{ .Values.service.port | quote }}
+  CML_URL: {{ required "cml.url is required" .Values.cml.url | quote }}
+  CML_VERIFY_SSL: {{ .Values.cml.verifySsl | toString | quote }}
+  CML_SESSION_TTL: {{ .Values.cml.sessionTtl | quote }}
+  DEBUG: {{ .Values.debug | toString | quote }}
+  {{- with .Values.cml.allowedUrls }}
+  CML_ALLOWED_URLS: {{ join "," . | quote }}
+  {{- end }}
+  {{- with .Values.cml.urlPattern }}
+  CML_URL_PATTERN: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.caBundle.enabled }}
+  CA_BUNDLE: "/etc/cml-ca/{{ .Values.caBundle.key }}"
+  {{- end }}
+---
+{{- if .Values.acl.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cml-mcp.fullname" . }}-acl
+  labels:
+    {{- include "cml-mcp.labels" . | nindent 4 }}
+data:
+  acl.yaml: |
+    {{- .Values.acl.rules | nindent 4 }}
+{{- end }}

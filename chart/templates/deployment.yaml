@@ -1,0 +1,119 @@
+{{- if and .Values.cml.allowedUrls .Values.cml.urlPattern }}
+{{- fail "Set only one of cml.allowedUrls or cml.urlPattern" }}
+{{- end }}
+{{- if and .Values.caBundle.enabled (not .Values.caBundle.secretName) }}
+{{- fail "caBundle.secretName is required when caBundle.enabled is true" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cml-mcp.fullname" . }}
+  labels:
+    {{- include "cml-mcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # Recreate avoids two pods briefly splitting MCP sessions during upgrades.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "cml-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # Restart the pod when config or ACL rules change.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "cml-mcp.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: cml-mcp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "cml-mcp.fullname" . }}
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # The server has no health endpoint, so check the TCP port.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .Values.acl.enabled .Values.caBundle.enabled }}
+          volumeMounts:
+            {{- if .Values.acl.enabled }}
+            - name: acl
+              mountPath: /app/acl.yaml
+              subPath: acl.yaml
+              readOnly: true
+            {{- end }}
+            {{- if .Values.caBundle.enabled }}
+            - name: cml-ca
+              mountPath: /etc/cml-ca
+              readOnly: true
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.acl.enabled .Values.caBundle.enabled }}
+      volumes:
+        {{- if .Values.acl.enabled }}
+        - name: acl
+          configMap:
+            name: {{ include "cml-mcp.fullname" . }}-acl
+        {{- end }}
+        {{- if .Values.caBundle.enabled }}
+        - name: cml-ca
+          secret:
+            secretName: {{ .Values.caBundle.secretName }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

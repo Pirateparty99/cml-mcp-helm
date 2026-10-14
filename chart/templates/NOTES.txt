@@ -1,0 +1,24 @@
+cml-mcp is running in HTTP mode against {{ .Values.cml.url }}.
+
+{{- if .Values.ingress.enabled }}
+
+MCP endpoint:
+  {{ if .Values.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}/mcp
+{{- else }}
+
+No Ingress is enabled. To test from your machine:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "cml-mcp.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+MCP endpoint:
+  http://localhost:{{ .Values.service.port }}/mcp   (add --allow-http to mcp-remote)
+{{- end }}
+
+Check the pod:
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "cml-mcp.fullname" . }}
+
+Credentials are not stored in the cluster. Claude Desktop sends them per
+request through mcp-remote headers. See README.md for the Desktop config.
+{{- if not .Values.cml.verifySsl }}
+
+Note: CML certificate verification is OFF (cml.verifySsl=false).
+{{- end }}

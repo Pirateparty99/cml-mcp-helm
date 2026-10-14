@@ -1,0 +1,16 @@
+apiVersion: v2
+name: cml-mcp
+description: >-
+  MCP server for Cisco Modeling Labs (xorrkaz/cml-mcp) running in HTTP transport
+  mode, for use with Claude Desktop through mcp-remote.
+type: application
+version: 0.1.0
+appVersion: "0.32.2"
+home: https://github.com/xorrkaz/cml-mcp
+sources:
+  - https://github.com/xorrkaz/cml-mcp
+keywords:
+  - mcp
+  - cisco
+  - cml
+  - network-automation
