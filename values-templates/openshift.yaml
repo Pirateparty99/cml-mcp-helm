@@ -1,0 +1,131 @@
+# OpenShift values for the cml-mcp chart.
+#
+#   helm install cml-mcp ./chart -f values-templates/openshift.yaml -n cml-mcp
+#
+# Differences from default.yaml:
+#   - Ingress uses the OpenShift router (it becomes a Route automatically),
+#     with edge TLS on the router's default certificate and a 1h timeout.
+#   - Security context fits the restricted-v2 SCC (OpenShift picks the UID).
+#   - HOME points to /tmp, since the random UID has no home directory.
+#
+# The server runs in HTTP mode. CML and device credentials are NOT stored in
+# the cluster: each client sends them per request in headers
+# (X-Authorization, X-PyATS-Authorization). See README.md.
+
+image:
+  repository: xorrkaz/cml-mcp
+  # Pin a version. Releases can be breaking (e.g. 0.31.0 changed SSL defaults).
+  # Defaults to the chart's appVersion when empty.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Keep at 1. MCP sessions and cached CML logins live in the pod's memory, so
+# multiple replicas would drop sessions without sticky routing.
+replicaCount: 1
+
+cml:
+  # Your CML server. Required.
+  url: "https://cml.example.com"
+  # CML ships with a self-signed certificate. Leave false unless CML has a
+  # CA-signed cert, or set caBundle below and switch this to true.
+  verifySsl: false
+  # Optional: let clients pick among several CML servers via the
+  # X-CML-Server-URL header. Use ONE of these.
+  allowedUrls: []          # e.g. ["https://cml1.example.com", "https://cml2.example.com"]
+  urlPattern: ""           # e.g. "^https://cml\\.example\\.com"
+  # Idle timeout (seconds) for cached CML sessions.
+  sessionTtl: 3600
+
+# Optional: trust CML's self-signed (or private CA) certificate instead of
+# disabling verification. Put the PEM in a Secret, then set:
+#   cml.verifySsl: true
+#   caBundle.enabled: true
+#   caBundle.secretName: cml-ca
+caBundle:
+  enabled: false
+  secretName: ""
+  key: ca.crt
+
+debug: false
+
+# Extra environment variables for the container.
+# Under restricted-v2 the container runs as a random non-root UID with no
+# home directory, so point HOME (and caches written under it) at /tmp.
+extraEnv:
+  - name: HOME
+    value: /tmp
+
+# Per-user tool restrictions, keyed by CML username. Mounted at /app/acl.yaml,
+# where the image already looks for it.
+acl:
+  enabled: false
+  rules: |
+    default_enabled: true
+    users:
+      student:
+        disabled_tools:
+          - delete_cml_lab
+          - delete_cml_node
+          - delete_cml_user
+          - delete_cml_group
+
+service:
+  type: ClusterIP
+  port: 9000
+
+# OpenShift turns this Ingress into a Route (check: oc get route).
+ingress:
+  enabled: true
+  className: openshift-default
+  annotations:
+    # Terminate TLS at the router. Credentials travel in request headers.
+    route.openshift.io/termination: edge
+    # MCP holds streaming HTTP responses open; the router's default timeout is
+    # 30s. HAProxy does not buffer responses, so no buffering setting is needed.
+    haproxy.router.openshift.io/timeout: 3600s
+    # Helm merges maps with the chart defaults; null removes the nginx ones.
+    nginx.ingress.kubernetes.io/proxy-buffering: null
+    nginx.ingress.kubernetes.io/proxy-read-timeout: null
+    nginx.ingress.kubernetes.io/proxy-send-timeout: null
+  # Must be under the cluster's apps domain:
+  #   oc get ingresses.config/cluster -o jsonpath='{.spec.domain}'
+  host: cml-mcp.apps.cluster.example.com
+  tls:
+    enabled: true
+    # Empty = use the router's default (wildcard *.apps) certificate. Set this
+    # to a kubernetes.io/tls Secret only for a custom cert; the Route is not
+    # created until that Secret exists.
+    secretName: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+podAnnotations: {}
+podLabels: {}
+
+# Compatible with the restricted-v2 SCC. Do not set runAsUser/fsGroup; the
+# SCC assigns them from the namespace's range. The upstream image is built to
+# run as root; if it fails as a random UID (permission errors under /app), the
+# fallback is: oc adm policy add-scc-to-user anyuid -z default -n <namespace>
+# and remove runAsNonRoot below.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
